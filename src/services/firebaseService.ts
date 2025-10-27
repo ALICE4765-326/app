@@ -45,6 +45,47 @@ export const usersService = {
     await this.copyBaseMenuForUser(userId);
   },
 
+  async resetUserMenu(userId: string) {
+    if (!isFirebaseAvailable()) {
+      console.log('⚠️ Firebase non disponible');
+      return;
+    }
+
+    console.log('🔄 RÉINITIALISATION DU MENU pour:', userId);
+
+    try {
+      // Supprimer toutes les pizzas de l'utilisateur
+      const pizzasRef = collection(db, COLLECTIONS.PIZZAS);
+      const userPizzasQuery = query(pizzasRef, where('userId', '==', userId));
+      const userPizzasSnapshot = await getDocs(userPizzasQuery);
+
+      for (const doc of userPizzasSnapshot.docs) {
+        await deleteDoc(doc.ref);
+      }
+      console.log(`✅ ${userPizzasSnapshot.size} pizzas supprimées`);
+
+      // Supprimer toutes les catégories de l'utilisateur
+      const categoriesRef = collection(db, 'categories');
+      const userCategoriesQuery = query(categoriesRef, where('userId', '==', userId));
+      const userCategoriesSnapshot = await getDocs(userCategoriesQuery);
+
+      for (const doc of userCategoriesSnapshot.docs) {
+        await deleteDoc(doc.ref);
+      }
+      console.log(`✅ ${userCategoriesSnapshot.size} catégories supprimées`);
+
+      // Réinitialiser le flag menu_initialized
+      const userRef = doc(db, COLLECTIONS.USERS, userId);
+      await updateDoc(userRef, { menu_initialized: false });
+      console.log(`✅ Flag menu_initialized réinitialisé`);
+
+      // Forcer une nouvelle copie
+      await this.copyBaseMenuForUser(userId);
+    } catch (error) {
+      console.error('❌ Erreur lors de la réinitialisation du menu:', error);
+    }
+  },
+
   async copyBaseMenuForUser(userId: string) {
     if (!isFirebaseAvailable()) {
       console.log('⚠️ Firebase non disponible');
@@ -55,7 +96,16 @@ export const usersService = {
     console.log('Auth user:', auth?.currentUser?.uid, auth?.currentUser?.email);
 
     try {
-      // Vérifier si l'utilisateur a déjà des pizzas
+      // Vérifier d'abord le flag menu_initialized dans le profil utilisateur
+      const userRef = doc(db, COLLECTIONS.USERS, userId);
+      const userSnap = await getDoc(userRef);
+
+      if (userSnap.exists() && userSnap.data().menu_initialized === true) {
+        console.log(`ℹ️ Menu déjà initialisé pour l'utilisateur ${userId} - Aucune copie effectuée`);
+        return;
+      }
+
+      // Double vérification : compter les pizzas existantes
       const pizzasRef = collection(db, COLLECTIONS.PIZZAS);
       const userPizzasQuery = query(pizzasRef, where('userId', '==', userId));
       const userPizzasSnapshot = await getDocs(userPizzasQuery);
@@ -63,8 +113,9 @@ export const usersService = {
       console.log('📊 Pizzas existantes pour cet utilisateur:', userPizzasSnapshot.size);
 
       if (!userPizzasSnapshot.empty) {
-        console.log(`ℹ️ L'utilisateur ${userId} a déjà ${userPizzasSnapshot.docs.length} pizzas - Aucune copie effectuée`);
-        console.log('Liste des pizzas existantes:', userPizzasSnapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name })));
+        console.log(`ℹ️ L'utilisateur ${userId} a déjà ${userPizzasSnapshot.docs.length} pizzas - Marquage comme initialisé`);
+        // Marquer comme initialisé même si le flag n'existe pas encore
+        await updateDoc(userRef, { menu_initialized: true });
         return;
       }
 
@@ -148,6 +199,10 @@ export const usersService = {
       }
 
       console.log(`✅ ${copiedCategoriesCount} catégories copiées depuis master vers l'utilisateur ${userId}`);
+
+      // Marquer le menu comme initialisé pour éviter les copies futures
+      await updateDoc(userRef, { menu_initialized: true });
+      console.log(`✅ Menu marqué comme initialisé pour l'utilisateur ${userId}`);
     } catch (error) {
       console.error('❌ Erreur lors de la copie du menu template:', error);
     }

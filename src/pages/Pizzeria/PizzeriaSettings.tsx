@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Save, Upload, MapPin, Phone, Mail, Clock, Building, Volume2, VolumeX } from 'lucide-react';
+import { Save, Upload, MapPin, Phone, Mail, Clock, Building, Volume2, VolumeX, RefreshCw } from 'lucide-react';
 import { usePizzeriaSettings } from '../../hooks/usePizzeriaSettings';
 import { audioNotificationService } from '../../services/audioNotificationService';
+import { usersService } from '../../services/firebaseService';
+import { useAuth } from '../../hooks/useAuth';
 
 interface PizzeriaSettings {
   logo_url: string;
@@ -22,9 +24,11 @@ interface PizzeriaSettings {
 }
 
 export function PizzeriaSettings() {
+  const { user } = useAuth();
   const { settings: firestoreSettings, loading: loadingSettings, updateSettings } = usePizzeriaSettings();
   const [settings, setSettings] = useState<PizzeriaSettings>(firestoreSettings);
   const [isSaving, setIsSaving] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [audioEnabled, setAudioEnabled] = useState(audioNotificationService.getEnabled());
   const [audioVolume, setAudioVolume] = useState(audioNotificationService.getVolume() * 100);
@@ -75,6 +79,37 @@ export function PizzeriaSettings() {
       setMessage({ type: 'error', text: error.message || 'Erro ao guardar as configurações' });
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  // Réinitialiser le menu
+  const handleResetMenu = async () => {
+    if (!user?.id) return;
+
+    const confirmReset = confirm(
+      '⚠️ ATENÇÃO: Esta ação irá eliminar TODAS as suas pizzas e categorias e copiar novamente o menu master.\n\n' +
+      'Esta operação é IRREVERSÍVEL!\n\n' +
+      'Tem certeza que deseja continuar?'
+    );
+
+    if (!confirmReset) return;
+
+    setIsResetting(true);
+    setMessage(null);
+
+    try {
+      await usersService.resetUserMenu(user.id);
+      setMessage({ type: 'success', text: 'Menu reinicializado com sucesso! Recarregue a página.' });
+
+      // Recarregar la page après 2 secondes
+      setTimeout(() => {
+        window.location.reload();
+      }, 2000);
+    } catch (error) {
+      console.error('Erro ao reinicializar o menu:', error);
+      setMessage({ type: 'error', text: 'Erro ao reinicializar o menu' });
+    } finally {
+      setIsResetting(false);
     }
   };
 
@@ -360,25 +395,37 @@ export function PizzeriaSettings() {
 
         {/* Botão de Guardar */}
         <div className="bg-white rounded-lg shadow-md p-6">
-          <div className="flex items-center justify-end space-x-4">
-            {/* Message à côté du bouton */}
-            {message && (
-              <div className={`px-3 py-2 rounded-md text-sm font-medium ${
-                message.type === 'success' 
-                  ? 'bg-green-100 text-green-700 border border-green-300' 
-                  : 'bg-red-100 text-red-700 border border-red-300'
-              }`}>
-                {message.text}
-              </div>
-            )}
+          <div className="flex items-center justify-between">
             <button
-              type="submit"
-              disabled={isSaving}
-              className="flex items-center space-x-2 bg-accent-500 text-white px-6 py-3 rounded-md hover:bg-accent-600 transition disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+              type="button"
+              onClick={handleResetMenu}
+              disabled={isResetting}
+              className="flex items-center space-x-2 bg-red-500 text-white px-6 py-3 rounded-md hover:bg-red-600 transition disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
             >
-              <Save className="h-5 w-5" />
-              <span>{isSaving ? 'A guardar...' : 'Guardar Configurações'}</span>
+              <RefreshCw className="h-5 w-5" />
+              <span>{isResetting ? 'A reinicializar...' : 'Reinicializar Menu'}</span>
             </button>
+
+            <div className="flex items-center space-x-4">
+              {/* Message à côté du bouton */}
+              {message && (
+                <div className={`px-3 py-2 rounded-md text-sm font-medium ${
+                  message.type === 'success'
+                    ? 'bg-green-100 text-green-700 border border-green-300'
+                    : 'bg-red-100 text-red-700 border border-red-300'
+                }`}>
+                  {message.text}
+                </div>
+              )}
+              <button
+                type="submit"
+                disabled={isSaving}
+                className="flex items-center space-x-2 bg-accent-500 text-white px-6 py-3 rounded-md hover:bg-accent-600 transition disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+              >
+                <Save className="h-5 w-5" />
+                <span>{isSaving ? 'A guardar...' : 'Guardar Configurações'}</span>
+              </button>
+            </div>
           </div>
         </div>
       </form>
