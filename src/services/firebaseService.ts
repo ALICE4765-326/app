@@ -51,7 +51,8 @@ export const usersService = {
       return;
     }
 
-    console.log('🍕 Début de la copie du menu template pour l\'utilisateur:', userId);
+    console.log('🍕🍕🍕 DÉBUT DE LA COPIE DU MENU POUR:', userId);
+    console.log('Auth user:', auth?.currentUser?.uid, auth?.currentUser?.email);
 
     try {
       // Vérifier si l'utilisateur a déjà des pizzas
@@ -67,34 +68,33 @@ export const usersService = {
         return;
       }
 
-      console.log('✅ Aucune pizza existante, recherche des templates...');
+      console.log('✅ Aucune pizza existante, copie du menu master...');
 
-      // Récupérer toutes les pizzas marquées comme templates
-      const templateQuery = query(pizzasRef, where('is_template', '==', true));
-      const templateSnapshot = await getDocs(templateQuery);
+      // Récupérer TOUTES les pizzas du master (pas de filtre is_template)
+      const masterPizzasQuery = query(pizzasRef, where('userId', '==', 'master'));
+      const masterPizzasSnapshot = await getDocs(masterPizzasQuery);
 
-      console.log('📊 Pizzas template trouvées:', templateSnapshot.size);
-      console.log('Liste des templates:', templateSnapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name, is_template: doc.data().is_template })));
+      console.log('📊 Pizzas master trouvées:', masterPizzasSnapshot.size);
+      console.log('Liste des pizzas master:', masterPizzasSnapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name, userId: doc.data().userId })));
 
-      if (templateSnapshot.empty) {
-        console.log('⚠️ Aucune pizza template trouvée');
-        console.log('💡 Pour créer des templates, connectez-vous en pizzeria et allez dans Configurações > Menu Template');
+      if (masterPizzasSnapshot.empty) {
+        console.log('⚠️ Aucune pizza master trouvée');
+        console.log('💡 Le compte master doit d\'abord créer des pizzas dans Gestão do Menu');
         return;
       }
 
-      // Copier chaque pizza template vers le nouvel utilisateur
+      // Copier chaque pizza master vers le nouvel utilisateur
       let copiedCount = 0;
-      for (const doc of templateSnapshot.docs) {
+      for (const doc of masterPizzasSnapshot.docs) {
         const pizzaData = doc.data();
 
-        // Exclure les champs Firebase spécifiques, l'ID et le flag template
-        const { created_at, updated_at, userId: oldUserId, is_template, ...pizzaToClone } = pizzaData;
+        // Exclure les champs Firebase spécifiques et l'ID
+        const { id, created_at, updated_at, userId: oldUserId, ...pizzaToClone } = pizzaData;
 
         await addDoc(pizzasRef, {
           ...pizzaToClone,
           userId: userId,
           active: true,
-          is_template: false,
           created_at: serverTimestamp(),
           updated_at: serverTimestamp()
         });
@@ -102,7 +102,7 @@ export const usersService = {
         console.log(`  ✓ Pizza copiée: ${pizzaData.name}`);
       }
 
-      console.log(`✅ ${copiedCount} pizzas copiées depuis les templates vers l'utilisateur ${userId}`);
+      console.log(`✅ ${copiedCount} pizzas copiées depuis master vers l'utilisateur ${userId}`);
 
       // Copier les catégories master vers le nouvel utilisateur
       const categoriesRef = collection(db, 'categories');
@@ -133,8 +133,8 @@ export const usersService = {
       for (const doc of masterCategoriesSnapshot.docs) {
         const categoryData = doc.data();
 
-        // Exclure les champs Firebase spécifiques
-        const { created_at, updated_at, userId: oldUserId, ...categoryToClone } = categoryData;
+        // Exclure les champs Firebase spécifiques et l'ID
+        const { id, created_at, updated_at, userId: oldUserId, ...categoryToClone } = categoryData;
 
         await addDoc(categoriesRef, {
           ...categoryToClone,
@@ -254,9 +254,6 @@ export const pizzasService = {
       // Remplacer owner_id par userId
       const isMaster = userData?.email === 'master@pizzeria.com';
       cleanData.userId = isMaster ? 'master' : currentUser.uid;
-
-      // Si c'est master, marquer automatiquement comme template
-      cleanData.is_template = isMaster ? true : false;
 
       delete cleanData.owner_id;
 
@@ -693,12 +690,15 @@ export const pizzasService = {
       const pizzasRef = collection(db, COLLECTIONS.PIZZAS);
       const q = query(pizzasRef, where('userId', '==', userIdToQuery));
 
+      console.log(`🔍 subscribeToAllPizzas: Écoute des pizzas pour userId=${userIdToQuery}`);
+
       return onSnapshot(q,
         (snapshot) => {
           const pizzas = snapshot.docs.map(doc => ({
             id: doc.id,
             ...doc.data()
           } as Pizza));
+          console.log(`📊 subscribeToAllPizzas: ${pizzas.length} pizzas trouvées pour userId=${userIdToQuery}`, pizzas.map(p => ({ name: p.name, userId: p.userId })));
           callback(pizzas);
         },
         (error) => {
