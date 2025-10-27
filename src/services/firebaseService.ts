@@ -552,78 +552,27 @@ export const pizzasService = {
     const pizzasRef = collection(db, COLLECTIONS.PIZZAS);
     const currentUser = auth?.currentUser;
 
-    // Si pas connecté, récupérer uniquement les pizzas master actives
-    if (!currentUser) {
-      const q = query(pizzasRef, where('active', '==', true), where('userId', '==', 'master'));
-      const snapshot = await getDocs(q);
-      const pizzas = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Pizza));
-      return pizzas.sort((a, b) => {
-        const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
-        const dateB = b.created_at ? new Date(a.created_at).getTime() : 0;
-        return dateB - dateA;
-      });
+    // Déterminer le userId à utiliser
+    let userIdToQuery = 'master'; // Par défaut pour utilisateurs non connectés
+
+    if (currentUser) {
+      // Vérifier si c'est le master
+      const userRef = doc(db, COLLECTIONS.USERS, currentUser.uid);
+      const userSnap = await getDoc(userRef);
+      const userData = userSnap.data();
+      userIdToQuery = (userData?.email === 'master@pizzeria.com') ? 'master' : currentUser.uid;
     }
 
-    // Déterminer le userId
-    const userRef = doc(db, COLLECTIONS.USERS, currentUser.uid);
-    const userSnap = await getDoc(userRef);
-    const userData = userSnap.data();
-    const userIdToUse = (userData?.email === 'master@pizzeria.com') ? 'master' : currentUser.uid;
+    // Récupérer uniquement les pizzas actives de cet utilisateur
+    const q = query(pizzasRef, where('active', '==', true), where('userId', '==', userIdToQuery));
+    const snapshot = await getDocs(q);
 
-    // Récupérer les pizzas master actives
-    const masterQuery = query(pizzasRef, where('active', '==', true), where('userId', '==', 'master'));
-    const masterSnapshot = await getDocs(masterQuery);
-    const masterPizzas = masterSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Pizza));
+    console.log(`🔍 getAllPizzas: ${snapshot.docs.length} pizzas actives trouvées pour userId=${userIdToQuery}`);
 
-    // Si c'est le master, retourner uniquement ses pizzas
-    if (userIdToUse === 'master') {
-      return masterPizzas.sort((a, b) => {
-        const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
-        const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
-        return dateB - dateA;
-      });
-    }
-
-    // Récupérer les overrides de l'utilisateur
-    const overridesQuery = query(pizzasRef, where('userId', '==', userIdToUse), where('is_override', '==', true));
-    const overridesSnapshot = await getDocs(overridesQuery);
-    const overrides = overridesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Pizza));
-
-    // Créer un map des overrides par master_pizza_id
-    const overrideMap = new Map<string, Pizza>();
-    overrides.forEach(override => {
-      if (override.master_pizza_id) {
-        overrideMap.set(override.master_pizza_id, override);
-      }
-    });
-
-    // Fusionner : remplacer les pizzas master par leurs overrides
-    const finalPizzas: Pizza[] = [];
-    masterPizzas.forEach(masterPizza => {
-      const override = overrideMap.get(masterPizza.id);
-      if (override) {
-        // Si l'override est caché, ne pas l'ajouter
-        if (!override.is_hidden) {
-          finalPizzas.push(override);
-        }
-      } else {
-        // Pas d'override, utiliser la pizza master
-        finalPizzas.push(masterPizza);
-      }
-    });
-
-    // Ajouter les pizzas créées par l'utilisateur (pas des overrides)
-    const userPizzasQuery = query(
-      pizzasRef,
-      where('userId', '==', userIdToUse),
-      where('is_override', '==', false)
-    );
-    const userPizzasSnapshot = await getDocs(userPizzasQuery);
-    const userPizzas = userPizzasSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Pizza));
-    finalPizzas.push(...userPizzas.filter(p => p.active));
+    const pizzas = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Pizza));
 
     // Tri côté client
-    return finalPizzas.sort((a, b) => {
+    return pizzas.sort((a, b) => {
       const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
       const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
       return dateB - dateA;
@@ -673,15 +622,30 @@ export const pizzasService = {
     const pizzasRef = collection(db, COLLECTIONS.PIZZAS);
     const currentUser = auth?.currentUser;
 
-    // Si pas connecté, écouter uniquement les pizzas master
-    if (!currentUser) {
-      const q = query(pizzasRef, where('active', '==', true), where('userId', '==', 'master'));
+    // Déterminer le userId à utiliser
+    const setupSubscription = async () => {
+      let userIdToQuery = 'master'; // Par défaut pour utilisateurs non connectés
+
+      if (currentUser) {
+        // Vérifier si c'est le master
+        const userRef = doc(db, COLLECTIONS.USERS, currentUser.uid);
+        const userSnap = await getDoc(userRef);
+        const userData = userSnap.data();
+        userIdToQuery = (userData?.email === 'master@pizzeria.com') ? 'master' : currentUser.uid;
+      }
+
+      // Écouter uniquement les pizzas de cet utilisateur (ou master si non connecté)
+      const q = query(pizzasRef, where('active', '==', true), where('userId', '==', userIdToQuery));
+
+      console.log(`🔍 subscribeToActivePizzas: Écoute des pizzas actives pour userId=${userIdToQuery}`);
+
       return onSnapshot(q,
         (snapshot) => {
           const pizzas = snapshot.docs.map(doc => ({
             id: doc.id,
             ...doc.data()
           } as Pizza));
+          console.log(`📊 subscribeToActivePizzas: ${pizzas.length} pizzas actives trouvées pour userId=${userIdToQuery}`);
           callback(pizzas);
         },
         (error) => {
@@ -689,61 +653,19 @@ export const pizzasService = {
           callback([]);
         }
       );
-    }
-
-    // Écouter les pizzas master
-    const masterQuery = query(pizzasRef, where('active', '==', true), where('userId', '==', 'master'));
-    let masterPizzas: Pizza[] = [];
-    let userPizzas: Pizza[] = [];
-    let masterUnsubscribed = false;
-    let userUnsubscribed = false;
-
-    const updateCallback = () => {
-      if (!masterUnsubscribed || !userUnsubscribed) return;
-      const allPizzas = [...masterPizzas, ...userPizzas];
-      callback(allPizzas);
     };
 
-    const unsubscribeMaster = onSnapshot(masterQuery,
-      (snapshot) => {
-        masterPizzas = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        } as Pizza));
-        masterUnsubscribed = true;
-        updateCallback();
-      },
-      (error) => {
-        console.error('Erreur lors de l\'écoute des pizzas master:', error);
-        masterPizzas = [];
-        masterUnsubscribed = true;
-        updateCallback();
-      }
-    );
+    let unsubscribe: (() => void) | null = null;
 
-    // Écouter les pizzas de l'utilisateur
-    const userQuery = query(pizzasRef, where('active', '==', true), where('userId', '==', currentUser.uid));
-    const unsubscribeUser = onSnapshot(userQuery,
-      (snapshot) => {
-        userPizzas = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        } as Pizza));
-        userUnsubscribed = true;
-        updateCallback();
-      },
-      (error) => {
-        console.error('Erreur lors de l\'écoute des pizzas utilisateur:', error);
-        userPizzas = [];
-        userUnsubscribed = true;
-        updateCallback();
-      }
-    );
+    setupSubscription().then(unsub => {
+      unsubscribe = unsub;
+    }).catch(error => {
+      console.error('Erreur lors de la configuration de la souscription:', error);
+      callback([]);
+    });
 
-    // Retourner une fonction qui désabonne les deux listeners
     return () => {
-      unsubscribeMaster();
-      unsubscribeUser();
+      if (unsubscribe) unsubscribe();
     };
   },
 
@@ -1240,58 +1162,24 @@ export const categoriesService = {
 
     const categoriesRef = collection(db, 'categories');
 
-    // Récupérer les catégories master
-    const masterQuery = query(categoriesRef, where('userId', '==', 'master'));
-    const masterSnapshot = await getDocs(masterQuery);
-    const masterCategories = new Map();
+    // Récupérer uniquement les catégories de cet utilisateur
+    const q = query(categoriesRef, where('userId', '==', userId));
+    const snapshot = await getDocs(q);
 
-    masterSnapshot.docs.forEach(doc => {
+    console.log(`🔍 getAllCategories: ${snapshot.docs.length} catégories trouvées pour userId=${userId}`);
+
+    const categories = snapshot.docs.map(doc => {
       const data = doc.data();
-      masterCategories.set(doc.id, {
+      return {
         id: doc.id,
         name: data.name || '',
         description: data.description || '',
         active: data.active ?? true,
         created_at: (data.created_at as Timestamp)?.toDate()?.toISOString() || new Date().toISOString()
-      });
+      };
     });
 
-    // Si c'est master, retourner uniquement les catégories master
-    if (userId === 'master') {
-      return Array.from(masterCategories.values()).sort((a, b) => a.name.localeCompare(b.name));
-    }
-
-    // Récupérer les overrides de l'utilisateur
-    const userQuery = query(categoriesRef, where('userId', '==', userId));
-    const userSnapshot = await getDocs(userQuery);
-
-    // Appliquer les overrides
-    userSnapshot.docs.forEach(doc => {
-      const data = doc.data();
-      const masterCategoryId = data.masterCategoryId;
-
-      if (masterCategoryId && masterCategories.has(masterCategoryId)) {
-        // C'est un override d'une catégorie master
-        masterCategories.set(masterCategoryId, {
-          id: masterCategoryId,
-          name: data.name || '',
-          description: data.description || '',
-          active: data.active ?? true,
-          created_at: (data.created_at as Timestamp)?.toDate()?.toISOString() || new Date().toISOString()
-        });
-      } else if (!masterCategoryId) {
-        // C'est une catégorie créée par l'utilisateur
-        masterCategories.set(doc.id, {
-          id: doc.id,
-          name: data.name || '',
-          description: data.description || '',
-          active: data.active ?? true,
-          created_at: (data.created_at as Timestamp)?.toDate()?.toISOString() || new Date().toISOString()
-        });
-      }
-    });
-
-    return Array.from(masterCategories.values()).sort((a, b) => a.name.localeCompare(b.name));
+    return categories.sort((a, b) => a.name.localeCompare(b.name));
   },
 
   subscribeToCategories(callback: (categories: Array<{ id: string; name: string; description?: string; active: boolean; created_at?: string }>) => void) {
@@ -1307,53 +1195,21 @@ export const categoriesService = {
     }
 
     const categoriesRef = collection(db, 'categories');
-    let unsubscribeMaster: (() => void) | null = null;
-    let unsubscribeUser: (() => void) | null = null;
 
-    // Fonction pour fusionner les catégories
-    const mergeCategories = (masterCats: any[], userCats: any[], userId: string) => {
-      const masterCategories = new Map();
-
-      // Ajouter les catégories master
-      masterCats.forEach(cat => {
-        masterCategories.set(cat.id, cat);
-      });
-
-      // Si c'est master, retourner uniquement les catégories master
-      if (userId === 'master') {
-        return Array.from(masterCategories.values()).sort((a, b) => a.name.localeCompare(b.name));
-      }
-
-      // Appliquer les overrides utilisateur
-      userCats.forEach(cat => {
-        const masterCategoryId = cat.masterCategoryId;
-
-        if (masterCategoryId && masterCategories.has(masterCategoryId)) {
-          // Override d'une catégorie master
-          masterCategories.set(masterCategoryId, cat);
-        } else if (!masterCategoryId) {
-          // Catégorie créée par l'utilisateur
-          masterCategories.set(cat.id, cat);
-        }
-      });
-
-      return Array.from(masterCategories.values()).sort((a, b) => a.name.localeCompare(b.name));
-    };
-
-    // Déterminer le userId et configurer les listeners
-    const setupListeners = async () => {
+    // Déterminer le userId et configurer le listener
+    const setupListener = async () => {
       const userRef = doc(db, COLLECTIONS.USERS, currentUser.uid);
       const userSnap = await getDoc(userRef);
       const userData = userSnap.data();
       const userId = (userData?.email === 'master@pizzeria.com') ? 'master' : currentUser.uid;
 
-      let masterCategories: any[] = [];
-      let userCategories: any[] = [];
+      // Écouter uniquement les catégories de cet utilisateur
+      const q = query(categoriesRef, where('userId', '==', userId));
 
-      // Écouter les catégories master
-      const masterQuery = query(categoriesRef, where('userId', '==', 'master'));
-      unsubscribeMaster = onSnapshot(masterQuery, (snapshot) => {
-        masterCategories = snapshot.docs.map(doc => {
+      console.log(`🔍 subscribeToCategories: Écoute des catégories pour userId=${userId}`);
+
+      return onSnapshot(q, (snapshot) => {
+        const categories = snapshot.docs.map(doc => {
           const data = doc.data();
           return {
             id: doc.id,
@@ -1364,39 +1220,23 @@ export const categoriesService = {
           };
         });
 
-        callback(mergeCategories(masterCategories, userCategories, userId));
+        console.log(`📊 subscribeToCategories: ${categories.length} catégories trouvées pour userId=${userId}`);
+        callback(categories.sort((a, b) => a.name.localeCompare(b.name)));
       });
-
-      // Si ce n'est pas master, écouter aussi les catégories utilisateur
-      if (userId !== 'master') {
-        const userQuery = query(categoriesRef, where('userId', '==', userId));
-        unsubscribeUser = onSnapshot(userQuery, (snapshot) => {
-          userCategories = snapshot.docs.map(doc => {
-            const data = doc.data();
-            return {
-              id: doc.id,
-              name: data.name || '',
-              description: data.description || '',
-              active: data.active ?? true,
-              masterCategoryId: data.masterCategoryId,
-              created_at: (data.created_at as Timestamp)?.toDate()?.toISOString() || new Date().toISOString()
-            };
-          });
-
-          callback(mergeCategories(masterCategories, userCategories, userId));
-        });
-      }
     };
 
-    setupListeners().catch(error => {
-      console.error('Erreur lors de la configuration des listeners:', error);
+    let unsubscribe: (() => void) | null = null;
+
+    setupListener().then(unsub => {
+      unsubscribe = unsub;
+    }).catch(error => {
+      console.error('Erreur lors de la configuration du listener:', error);
       callback([]);
     });
 
     // Retourner une fonction de nettoyage
     return () => {
-      if (unsubscribeMaster) unsubscribeMaster();
-      if (unsubscribeUser) unsubscribeUser();
+      if (unsubscribe) unsubscribe();
     };
   }
 };
