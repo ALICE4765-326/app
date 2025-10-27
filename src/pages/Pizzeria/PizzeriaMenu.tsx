@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, CreditCard as Edit2, Trash2, Eye, EyeOff, Settings, Copy } from 'lucide-react';
+import { Plus, CreditCard as Edit2, Trash2, Eye, EyeOff, Settings } from 'lucide-react';
 import { pizzasService } from '../../services/firebaseService';
 import { extrasService } from '../../services/firebaseService';
 import { InitializationService } from '../../services/initializationService';
@@ -407,31 +407,6 @@ export function PizzeriaMenu() {
     }
   };
 
-  const handleMarkAllAsTemplates = async () => {
-    if (!confirm('Marcar todas as pizzas como templates? Estas pizzas serão copiadas para novos utilizadores.')) {
-      return;
-    }
-
-    setIsSyncing(true);
-    try {
-      let updatedCount = 0;
-
-      for (const pizza of pizzas) {
-        if (InitializationService.isFirebaseAvailable()) {
-          await pizzasService.updatePizza(pizza.id, { is_template: true });
-          updatedCount++;
-        }
-      }
-
-      alert(`✅ ${updatedCount} pizzas marcadas como templates!`);
-    } catch (error) {
-      console.error('Erro ao marcar pizzas como templates:', error);
-      alert('Erro ao marcar pizzas como templates');
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
   // Filtrer et trier les pizzas
   const filteredAndSortedPizzas = [...pizzas]
     .filter(pizza => {
@@ -488,17 +463,6 @@ export function PizzeriaMenu() {
             <p className="text-primary-600">Adicione, modifique e gira</p>
           </div>
           <div className="flex space-x-3">
-            {isMasterAccount && (
-              <button
-                onClick={handleMarkAllAsTemplates}
-                disabled={isSyncing || pizzas.length === 0}
-                className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Marcar todas as pizzas como templates para novos utilizadores"
-              >
-                <Copy className="h-5 w-5" />
-                <span>{isSyncing ? 'A guardar...' : 'Marcar como Templates'}</span>
-              </button>
-            )}
             <button
               onClick={() => setShowExtrasModal(true)}
               className="flex items-center space-x-2 bg-purple-500 text-white px-4 py-2 rounded-md hover:bg-purple-600 transition"

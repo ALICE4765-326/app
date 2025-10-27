@@ -63,14 +63,18 @@ export const usersService = {
 
       if (!userPizzasSnapshot.empty) {
         console.log(`ℹ️ L'utilisateur ${userId} a déjà ${userPizzasSnapshot.docs.length} pizzas - Aucune copie effectuée`);
+        console.log('Liste des pizzas existantes:', userPizzasSnapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name })));
         return;
       }
+
+      console.log('✅ Aucune pizza existante, recherche des templates...');
 
       // Récupérer toutes les pizzas marquées comme templates
       const templateQuery = query(pizzasRef, where('is_template', '==', true));
       const templateSnapshot = await getDocs(templateQuery);
 
       console.log('📊 Pizzas template trouvées:', templateSnapshot.size);
+      console.log('Liste des templates:', templateSnapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name, is_template: doc.data().is_template })));
 
       if (templateSnapshot.empty) {
         console.log('⚠️ Aucune pizza template trouvée');
@@ -248,7 +252,12 @@ export const pizzasService = {
       const userData = userSnap.data();
 
       // Remplacer owner_id par userId
-      cleanData.userId = (userData?.email === 'master@pizzeria.com') ? 'master' : currentUser.uid;
+      const isMaster = userData?.email === 'master@pizzeria.com';
+      cleanData.userId = isMaster ? 'master' : currentUser.uid;
+
+      // Si c'est master, marquer automatiquement comme template
+      cleanData.is_template = isMaster ? true : false;
+
       delete cleanData.owner_id;
 
       const docRef = await addDoc(pizzasRef, cleanData);
