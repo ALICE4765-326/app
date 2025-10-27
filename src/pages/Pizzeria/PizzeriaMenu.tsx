@@ -752,25 +752,11 @@ export function PizzeriaMenu() {
       {pizzas.length === 0 && (
         <div className="text-center py-12 bg-white rounded-lg shadow-md">
           <p className="text-primary-600 mb-4">Nenhuma item no menu</p>
-          <p className="text-sm text-primary-500 mb-6">
-            {!isMasterAccount && 'Se o master criou um menu template, ele será copiado automaticamente na próxima recarga da página.'}
-          </p>
-          <div className="flex justify-center space-x-4">
-            <button
-              onClick={() => setShowModal(true)}
-              className="bg-accent-500 text-white px-4 py-2 rounded-md hover:bg-accent-600 transition"
-            >
-              Adicionar Pizza Manualmente
-            </button>
-            {!isMasterAccount && (
-              <button
-                onClick={() => window.location.reload()}
-                className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 transition"
-              >
-                Recarregar Página
-              </button>
-            )}
-          </div>
+          {!isMasterAccount && (
+            <p className="text-sm text-primary-500">
+              Se o master criou um menu template, ele será copiado automaticamente.
+            </p>
+          )}
         </div>
       )}
 
