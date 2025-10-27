@@ -84,13 +84,13 @@ export const usersService = {
         const pizzaData = doc.data();
 
         // Exclure les champs Firebase spécifiques, l'ID et le flag template
-        const { created_at, updated_at, userId: oldUserId, isTemplate, ...pizzaToClone } = pizzaData;
+        const { created_at, updated_at, userId: oldUserId, is_template, ...pizzaToClone } = pizzaData;
 
         await addDoc(pizzasRef, {
           ...pizzaToClone,
           userId: userId,
           active: true,
-          isTemplate: false,
+          is_template: false,
           created_at: serverTimestamp(),
           updated_at: serverTimestamp()
         });
