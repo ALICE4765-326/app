@@ -2,57 +2,47 @@ export function Legal() {
   return (
     <div className="max-w-3xl mx-auto">
       <h1 className="text-3xl font-bold text-primary-800 mb-8">Termos Legais</h1>
-      
+
       <div className="bg-white rounded-lg shadow-md p-8 space-y-6">
         <section>
-          <h2 className="text-xl font-semibold text-primary-800 mb-4">1. Informações legais</h2>
+          <h2 className="text-xl font-semibold text-primary-800 mb-4">1. Aceitação dos Termos</h2>
           <p className="text-primary-600">
-            Vício da Pizza Lda.<br />
-            Capital social: 50.000€<br />
-            NIPC: 123 456 789<br />
-            Conservatória do Registo Comercial de Braga<br />
-            Número de identificação de pessoa coletiva: PT 123 456 789<br />
-            Sede social: R. Mato da Senra, 4770-215 Joane
+            Ao aceder e utilizar esta aplicação, o utilizador aceita estar vinculado a estes termos de utilização. Se não concordar com estes termos, não deve utilizar esta aplicação.
           </p>
         </section>
 
         <section>
-          <h2 className="text-xl font-semibold text-primary-800 mb-4">2. Diretor da publicação</h2>
+          <h2 className="text-xl font-semibold text-primary-800 mb-4">2. Utilização da Aplicação</h2>
           <p className="text-primary-600">
-            Sr. João Silva, Gerente da Vício da Pizza Lda.
+            Esta aplicação é fornecida apenas para fins de teste e demonstração. O utilizador compromete-se a utilizar a aplicação de forma lícita e de acordo com todos os regulamentos aplicáveis.
           </p>
         </section>
 
         <section>
-          <h2 className="text-xl font-semibold text-primary-800 mb-4">3. Alojamento</h2>
+          <h2 className="text-xl font-semibold text-primary-800 mb-4">3. Propriedade Intelectual</h2>
           <p className="text-primary-600">
-            Este site é alojado por:<br />
-            Bolt.host<br />
-            StackBlitz, Inc.<br />
-            548 Market St PMB 61347<br />
-            San Francisco, California 94104<br />
-            Estados Unidos
+            Todo o conteúdo desta aplicação, incluindo textos, gráficos, logotipos e imagens, está protegido por leis de direitos de autor. A reprodução não autorizada é proibida.
           </p>
         </section>
 
         <section>
-          <h2 className="text-xl font-semibold text-primary-800 mb-4">4. Propriedade intelectual</h2>
+          <h2 className="text-xl font-semibold text-primary-800 mb-4">4. Proteção de Dados</h2>
           <p className="text-primary-600">
-            O conjunto deste site está sujeito à legislação portuguesa e internacional sobre direitos de autor e propriedade intelectual. Todos os direitos de reprodução estão reservados, incluindo para os documentos descarregáveis e as representações iconográficas e fotográficas.
+            Os dados pessoais recolhidos são tratados de acordo com a legislação aplicável em matéria de proteção de dados. Consulte a nossa política de privacidade para mais informações.
           </p>
         </section>
 
         <section>
-          <h2 className="text-xl font-semibold text-primary-800 mb-4">5. Cookies</h2>
+          <h2 className="text-xl font-semibold text-primary-800 mb-4">5. Limitação de Responsabilidade</h2>
           <p className="text-primary-600">
-            O nosso site utiliza cookies para melhorar a sua experiência de utilizador. Ao continuar a navegar neste site, aceita a utilização de cookies de acordo com a nossa política de privacidade.
+            Esta aplicação é fornecida "como está". Não garantimos que a aplicação estará disponível de forma ininterrupta ou livre de erros. O utilizador utiliza a aplicação por sua conta e risco.
           </p>
         </section>
 
         <section>
-          <h2 className="text-xl font-semibold text-primary-800 mb-4">6. Limitação de responsabilidade</h2>
+          <h2 className="text-xl font-semibold text-primary-800 mb-4">6. Modificações</h2>
           <p className="text-primary-600">
-            A Vício da Pizza esforça-se por assegurar da melhor forma possível a exatidão e atualização das informações difundidas neste site, reservando-se o direito de corrigir, a qualquer momento e sem aviso prévio, o conteúdo.
+            Reservamo-nos o direito de modificar estes termos a qualquer momento. As alterações entrarão em vigor imediatamente após a sua publicação na aplicação.
           </p>
         </section>
       </div>

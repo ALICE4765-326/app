@@ -69,7 +69,7 @@ export function Privacy() {
         <section>
           <h2 className="text-xl font-semibold text-primary-800 mb-4">6. Contacto</h2>
           <p className="text-primary-600">
-            Para qualquer questão sobre a nossa política de privacidade ou para exercer os seus direitos, pode contactar-nos através do endereço: privacidade@pizza-delice.pt
+            Para qualquer questão sobre a nossa política de privacidade ou para exercer os seus direitos, pode contactar-nos através do formulário de contacto disponível na aplicação.
           </p>
         </section>
       </div>
