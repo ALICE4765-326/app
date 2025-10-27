@@ -201,8 +201,9 @@ export const pizzasService = {
       }
       
       const userData = userSnap.data();
-      if (!userData.role || (userData.role !== 'admin' && userData.role !== 'pizzeria')) {
-        throw new Error(`Permissions insuffisantes. Votre rôle actuel: ${userData.role || 'non défini'}. Rôle requis: admin ou pizzeria.`);
+      const currentRole = userData.selectedSpace || userData.role || 'client';
+      if (currentRole !== 'admin' && currentRole !== 'pizzeria') {
+        throw new Error(`Permissions insuffisantes. Votre espace actuel: ${currentRole}. Espace requis: pizzeria.`);
       }
     } catch (error: any) {
       if (error.message.includes('Permissions insuffisantes') || error.message.includes('Profil utilisateur')) {
@@ -266,6 +267,20 @@ export const pizzasService = {
     const currentUser = auth?.currentUser;
     if (!currentUser) throw new Error('Utilisateur non connecté');
 
+    // Vérifier le rôle de l'utilisateur
+    const userRef = doc(db, COLLECTIONS.USERS, currentUser.uid);
+    const userSnap = await getDoc(userRef);
+
+    if (!userSnap.exists()) {
+      throw new Error('Profil utilisateur non trouvé');
+    }
+
+    const userData = userSnap.data();
+    const currentRole = userData.selectedSpace || userData.role || 'client';
+    if (currentRole !== 'admin' && currentRole !== 'pizzeria') {
+      throw new Error(`Permissions insuffisantes. Votre espace actuel: ${currentRole}. Espace requis: pizzeria.`);
+    }
+
     const pizzasRef = collection(db, COLLECTIONS.PIZZAS);
     const pizzaRef = doc(db, COLLECTIONS.PIZZAS, pizzaId);
     const pizzaSnap = await getDoc(pizzaRef);
@@ -275,9 +290,6 @@ export const pizzasService = {
     const existingPizza = pizzaSnap.data() as Pizza;
 
     // Déterminer le userId de l'utilisateur actuel
-    const userRef = doc(db, COLLECTIONS.USERS, currentUser.uid);
-    const userSnap = await getDoc(userRef);
-    const userData = userSnap.data();
     const userIdToUse = (userData?.email === 'master@pizzeria.com') ? 'master' : currentUser.uid;
 
     // Si c'est une pizza master ET que l'utilisateur n'est PAS master
@@ -337,6 +349,11 @@ export const pizzasService = {
         await updateDoc(overrideRef, cleanData);
       }
     } else {
+      // Vérifier que l'utilisateur peut modifier cette pizza
+      if (existingPizza.userId !== userIdToUse) {
+        throw new Error('Vous n\'avez pas la permission de modifier cette pizza');
+      }
+
       // Modifier directement (c'est sa propre pizza ou master modifie ses pizzas)
       const cleanData: any = {
         updated_at: serverTimestamp()
@@ -378,6 +395,20 @@ export const pizzasService = {
     const currentUser = auth?.currentUser;
     if (!currentUser) throw new Error('Utilisateur non connecté');
 
+    // Vérifier le rôle de l'utilisateur
+    const userRef = doc(db, COLLECTIONS.USERS, currentUser.uid);
+    const userSnap = await getDoc(userRef);
+
+    if (!userSnap.exists()) {
+      throw new Error('Profil utilisateur non trouvé');
+    }
+
+    const userData = userSnap.data();
+    const currentRole = userData.selectedSpace || userData.role || 'client';
+    if (currentRole !== 'admin' && currentRole !== 'pizzeria') {
+      throw new Error(`Permissions insuffisantes. Votre espace actuel: ${currentRole}. Espace requis: pizzeria.`);
+    }
+
     const pizzasRef = collection(db, COLLECTIONS.PIZZAS);
     const pizzaRef = doc(db, COLLECTIONS.PIZZAS, pizzaId);
     const pizzaSnap = await getDoc(pizzaRef);
@@ -387,9 +418,6 @@ export const pizzasService = {
     const existingPizza = pizzaSnap.data() as Pizza;
 
     // Déterminer le userId de l'utilisateur actuel
-    const userRef = doc(db, COLLECTIONS.USERS, currentUser.uid);
-    const userSnap = await getDoc(userRef);
-    const userData = userSnap.data();
     const userIdToUse = (userData?.email === 'master@pizzeria.com') ? 'master' : currentUser.uid;
 
     // Si c'est une pizza master ET que l'utilisateur n'est PAS master
@@ -423,6 +451,11 @@ export const pizzasService = {
         await updateDoc(overrideRef, { is_hidden: true, updated_at: serverTimestamp() });
       }
     } else {
+      // Vérifier que l'utilisateur peut supprimer cette pizza
+      if (existingPizza.userId !== userIdToUse) {
+        throw new Error('Vous n\'avez pas la permission de supprimer cette pizza');
+      }
+
       // Supprimer directement (c'est sa propre pizza ou master supprime ses pizzas)
       await deleteDoc(pizzaRef);
     }
