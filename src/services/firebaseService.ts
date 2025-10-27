@@ -29,6 +29,9 @@ export const COLLECTIONS = {
   EXTRAS: 'extras'
 } as const;
 
+// Verrou pour empêcher les copies multiples simultanées
+const copyLocks = new Map<string, Promise<void>>();
+
 // Users Service
 export const usersService = {
   async createUser(userId: string, userData: Partial<User>) {
@@ -92,120 +95,141 @@ export const usersService = {
       return;
     }
 
+    // Vérifier si une copie est déjà en cours pour cet utilisateur
+    if (copyLocks.has(userId)) {
+      console.log(`⏳ Copie déjà en cours pour l'utilisateur ${userId}, attente...`);
+      await copyLocks.get(userId);
+      console.log(`✅ Copie terminée (via attente) pour l'utilisateur ${userId}`);
+      return;
+    }
+
     console.log('🍕🍕🍕 DÉBUT DE LA COPIE DU MENU POUR:', userId);
     console.log('Auth user:', auth?.currentUser?.uid, auth?.currentUser?.email);
 
-    try {
-      // Vérifier d'abord le flag menu_initialized dans le profil utilisateur
-      const userRef = doc(db, COLLECTIONS.USERS, userId);
-      const userSnap = await getDoc(userRef);
+    // Créer une promesse pour verrouiller les appels concurrents
+    const copyPromise = (async () => {
+      try {
+        // Vérifier d'abord le flag menu_initialized dans le profil utilisateur
+        const userRef = doc(db, COLLECTIONS.USERS, userId);
+        const userSnap = await getDoc(userRef);
 
-      if (userSnap.exists() && userSnap.data().menu_initialized === true) {
-        console.log(`ℹ️ Menu déjà initialisé pour l'utilisateur ${userId} - Aucune copie effectuée`);
-        return;
-      }
+        if (userSnap.exists() && userSnap.data().menu_initialized === true) {
+          console.log(`ℹ️ Menu déjà initialisé pour l'utilisateur ${userId} - Aucune copie effectuée`);
+          return;
+        }
 
-      // Double vérification : compter les pizzas existantes
-      const pizzasRef = collection(db, COLLECTIONS.PIZZAS);
-      const userPizzasQuery = query(pizzasRef, where('userId', '==', userId));
-      const userPizzasSnapshot = await getDocs(userPizzasQuery);
+        // Double vérification : compter les pizzas existantes
+        const pizzasRef = collection(db, COLLECTIONS.PIZZAS);
+        const userPizzasQuery = query(pizzasRef, where('userId', '==', userId));
+        const userPizzasSnapshot = await getDocs(userPizzasQuery);
 
-      console.log('📊 Pizzas existantes pour cet utilisateur:', userPizzasSnapshot.size);
+        console.log('📊 Pizzas existantes pour cet utilisateur:', userPizzasSnapshot.size);
 
-      if (!userPizzasSnapshot.empty) {
-        console.log(`ℹ️ L'utilisateur ${userId} a déjà ${userPizzasSnapshot.docs.length} pizzas - Marquage comme initialisé`);
-        // Marquer comme initialisé même si le flag n'existe pas encore
+        if (!userPizzasSnapshot.empty) {
+          console.log(`ℹ️ L'utilisateur ${userId} a déjà ${userPizzasSnapshot.docs.length} pizzas - Marquage comme initialisé`);
+          // Marquer comme initialisé même si le flag n'existe pas encore
+          await updateDoc(userRef, { menu_initialized: true });
+          return;
+        }
+
+        console.log('✅ Aucune pizza existante, copie du menu master...');
+
+        // Récupérer TOUTES les pizzas du master (pas de filtre is_template)
+        const masterPizzasQuery = query(pizzasRef, where('userId', '==', 'master'));
+        const masterPizzasSnapshot = await getDocs(masterPizzasQuery);
+
+        console.log('📊 Pizzas master trouvées:', masterPizzasSnapshot.size);
+        console.log('Liste des pizzas master:', masterPizzasSnapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name, userId: doc.data().userId })));
+
+        if (masterPizzasSnapshot.empty) {
+          console.log('⚠️ Aucune pizza master trouvée');
+          console.log('💡 Le compte master doit d\'abord créer des pizzas dans Gestão do Menu');
+          return;
+        }
+
+        // Copier chaque pizza master vers le nouvel utilisateur
+        let copiedCount = 0;
+        for (const doc of masterPizzasSnapshot.docs) {
+          const pizzaData = doc.data();
+
+          // Exclure les champs Firebase spécifiques et l'ID
+          const { id, created_at, updated_at, userId: oldUserId, ...pizzaToClone } = pizzaData;
+
+          await addDoc(pizzasRef, {
+            ...pizzaToClone,
+            userId: userId,
+            active: true,
+            created_at: serverTimestamp(),
+            updated_at: serverTimestamp()
+          });
+          copiedCount++;
+          console.log(`  ✓ Pizza copiée: ${pizzaData.name}`);
+        }
+
+        console.log(`✅ ${copiedCount} pizzas copiées depuis master vers l'utilisateur ${userId}`);
+
+        // Copier les catégories master vers le nouvel utilisateur
+        const categoriesRef = collection(db, 'categories');
+
+        // Vérifier si l'utilisateur a déjà des catégories
+        const userCategoriesQuery = query(categoriesRef, where('userId', '==', userId));
+        const userCategoriesSnapshot = await getDocs(userCategoriesQuery);
+
+        console.log('📊 Catégories existantes pour cet utilisateur:', userCategoriesSnapshot.size);
+
+        if (!userCategoriesSnapshot.empty) {
+          console.log(`ℹ️ L'utilisateur ${userId} a déjà ${userCategoriesSnapshot.docs.length} catégories - Aucune copie effectuée`);
+          return;
+        }
+
+        const masterCategoriesQuery = query(categoriesRef, where('userId', '==', 'master'));
+        const masterCategoriesSnapshot = await getDocs(masterCategoriesQuery);
+
+        console.log('📊 Catégories master trouvées:', masterCategoriesSnapshot.size);
+
+        if (masterCategoriesSnapshot.empty) {
+          console.log('⚠️ Aucune catégorie master trouvée');
+          return;
+        }
+
+        // Copier chaque catégorie master vers le nouvel utilisateur
+        let copiedCategoriesCount = 0;
+        for (const doc of masterCategoriesSnapshot.docs) {
+          const categoryData = doc.data();
+
+          // Exclure les champs Firebase spécifiques et l'ID
+          const { id, created_at, updated_at, userId: oldUserId, ...categoryToClone } = categoryData;
+
+          await addDoc(categoriesRef, {
+            ...categoryToClone,
+            userId: userId,
+            active: true,
+            created_at: serverTimestamp(),
+            updated_at: serverTimestamp()
+          });
+          copiedCategoriesCount++;
+          console.log(`  ✓ Catégorie copiée: ${categoryData.name}`);
+        }
+
+        console.log(`✅ ${copiedCategoriesCount} catégories copiées depuis master vers l'utilisateur ${userId}`);
+
+        // Marquer le menu comme initialisé pour éviter les copies futures
         await updateDoc(userRef, { menu_initialized: true });
-        return;
+        console.log(`✅ Menu marqué comme initialisé pour l'utilisateur ${userId}`);
+      } catch (error) {
+        console.error('❌ Erreur lors de la copie du menu template:', error);
+      } finally {
+        // Retirer le verrou après la copie (réussie ou échouée)
+        copyLocks.delete(userId);
+        console.log(`🔓 Verrou retiré pour l'utilisateur ${userId}`);
       }
+    })();
 
-      console.log('✅ Aucune pizza existante, copie du menu master...');
+    // Enregistrer la promesse dans le verrou
+    copyLocks.set(userId, copyPromise);
 
-      // Récupérer TOUTES les pizzas du master (pas de filtre is_template)
-      const masterPizzasQuery = query(pizzasRef, where('userId', '==', 'master'));
-      const masterPizzasSnapshot = await getDocs(masterPizzasQuery);
-
-      console.log('📊 Pizzas master trouvées:', masterPizzasSnapshot.size);
-      console.log('Liste des pizzas master:', masterPizzasSnapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name, userId: doc.data().userId })));
-
-      if (masterPizzasSnapshot.empty) {
-        console.log('⚠️ Aucune pizza master trouvée');
-        console.log('💡 Le compte master doit d\'abord créer des pizzas dans Gestão do Menu');
-        return;
-      }
-
-      // Copier chaque pizza master vers le nouvel utilisateur
-      let copiedCount = 0;
-      for (const doc of masterPizzasSnapshot.docs) {
-        const pizzaData = doc.data();
-
-        // Exclure les champs Firebase spécifiques et l'ID
-        const { id, created_at, updated_at, userId: oldUserId, ...pizzaToClone } = pizzaData;
-
-        await addDoc(pizzasRef, {
-          ...pizzaToClone,
-          userId: userId,
-          active: true,
-          created_at: serverTimestamp(),
-          updated_at: serverTimestamp()
-        });
-        copiedCount++;
-        console.log(`  ✓ Pizza copiée: ${pizzaData.name}`);
-      }
-
-      console.log(`✅ ${copiedCount} pizzas copiées depuis master vers l'utilisateur ${userId}`);
-
-      // Copier les catégories master vers le nouvel utilisateur
-      const categoriesRef = collection(db, 'categories');
-
-      // Vérifier si l'utilisateur a déjà des catégories
-      const userCategoriesQuery = query(categoriesRef, where('userId', '==', userId));
-      const userCategoriesSnapshot = await getDocs(userCategoriesQuery);
-
-      console.log('📊 Catégories existantes pour cet utilisateur:', userCategoriesSnapshot.size);
-
-      if (!userCategoriesSnapshot.empty) {
-        console.log(`ℹ️ L'utilisateur ${userId} a déjà ${userCategoriesSnapshot.docs.length} catégories - Aucune copie effectuée`);
-        return;
-      }
-
-      const masterCategoriesQuery = query(categoriesRef, where('userId', '==', 'master'));
-      const masterCategoriesSnapshot = await getDocs(masterCategoriesQuery);
-
-      console.log('📊 Catégories master trouvées:', masterCategoriesSnapshot.size);
-
-      if (masterCategoriesSnapshot.empty) {
-        console.log('⚠️ Aucune catégorie master trouvée');
-        return;
-      }
-
-      // Copier chaque catégorie master vers le nouvel utilisateur
-      let copiedCategoriesCount = 0;
-      for (const doc of masterCategoriesSnapshot.docs) {
-        const categoryData = doc.data();
-
-        // Exclure les champs Firebase spécifiques et l'ID
-        const { id, created_at, updated_at, userId: oldUserId, ...categoryToClone } = categoryData;
-
-        await addDoc(categoriesRef, {
-          ...categoryToClone,
-          userId: userId,
-          active: true,
-          created_at: serverTimestamp(),
-          updated_at: serverTimestamp()
-        });
-        copiedCategoriesCount++;
-        console.log(`  ✓ Catégorie copiée: ${categoryData.name}`);
-      }
-
-      console.log(`✅ ${copiedCategoriesCount} catégories copiées depuis master vers l'utilisateur ${userId}`);
-
-      // Marquer le menu comme initialisé pour éviter les copies futures
-      await updateDoc(userRef, { menu_initialized: true });
-      console.log(`✅ Menu marqué comme initialisé pour l'utilisateur ${userId}`);
-    } catch (error) {
-      console.error('❌ Erreur lors de la copie du menu template:', error);
-    }
+    // Attendre la fin de la copie
+    await copyPromise;
   },
 
   async updateUser(userId: string, userData: Partial<User>) {
