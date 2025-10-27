@@ -102,6 +102,18 @@ export const usersService = {
 
       // Copier les catégories master vers le nouvel utilisateur
       const categoriesRef = collection(db, 'categories');
+
+      // Vérifier si l'utilisateur a déjà des catégories
+      const userCategoriesQuery = query(categoriesRef, where('userId', '==', userId));
+      const userCategoriesSnapshot = await getDocs(userCategoriesQuery);
+
+      console.log('📊 Catégories existantes pour cet utilisateur:', userCategoriesSnapshot.size);
+
+      if (!userCategoriesSnapshot.empty) {
+        console.log(`ℹ️ L'utilisateur ${userId} a déjà ${userCategoriesSnapshot.docs.length} catégories - Aucune copie effectuée`);
+        return;
+      }
+
       const masterCategoriesQuery = query(categoriesRef, where('userId', '==', 'master'));
       const masterCategoriesSnapshot = await getDocs(masterCategoriesQuery);
 
@@ -1173,23 +1185,54 @@ export const categoriesService = {
       return () => {};
     }
 
-    // Déterminer le userId (master ou UID)
-    const getUserId = async () => {
+    const categoriesRef = collection(db, 'categories');
+    let unsubscribeMaster: (() => void) | null = null;
+    let unsubscribeUser: (() => void) | null = null;
+
+    // Fonction pour fusionner les catégories
+    const mergeCategories = (masterCats: any[], userCats: any[], userId: string) => {
+      const masterCategories = new Map();
+
+      // Ajouter les catégories master
+      masterCats.forEach(cat => {
+        masterCategories.set(cat.id, cat);
+      });
+
+      // Si c'est master, retourner uniquement les catégories master
+      if (userId === 'master') {
+        return Array.from(masterCategories.values()).sort((a, b) => a.name.localeCompare(b.name));
+      }
+
+      // Appliquer les overrides utilisateur
+      userCats.forEach(cat => {
+        const masterCategoryId = cat.masterCategoryId;
+
+        if (masterCategoryId && masterCategories.has(masterCategoryId)) {
+          // Override d'une catégorie master
+          masterCategories.set(masterCategoryId, cat);
+        } else if (!masterCategoryId) {
+          // Catégorie créée par l'utilisateur
+          masterCategories.set(cat.id, cat);
+        }
+      });
+
+      return Array.from(masterCategories.values()).sort((a, b) => a.name.localeCompare(b.name));
+    };
+
+    // Déterminer le userId et configurer les listeners
+    const setupListeners = async () => {
       const userRef = doc(db, COLLECTIONS.USERS, currentUser.uid);
       const userSnap = await getDoc(userRef);
       const userData = userSnap.data();
-      return (userData?.email === 'master@pizzeria.com') ? 'master' : currentUser.uid;
-    };
+      const userId = (userData?.email === 'master@pizzeria.com') ? 'master' : currentUser.uid;
 
-    const categoriesRef = collection(db, 'categories');
-    let unsubscribe: (() => void) | null = null;
+      let masterCategories: any[] = [];
+      let userCategories: any[] = [];
 
-    // Initialiser l'écoute
-    getUserId().then(async (userId) => {
-      // Écouter en temps réel les catégories de l'utilisateur (ou master si c'est master)
-      const userQuery = query(categoriesRef, where('userId', '==', userId));
-      unsubscribe = onSnapshot(userQuery, (snapshot) => {
-        const categories = snapshot.docs.map(doc => {
+      // Écouter les catégories master
+      const masterQuery = query(categoriesRef, where('userId', '==', 'master'));
+      unsubscribeMaster = onSnapshot(masterQuery, (snapshot) => {
+        masterCategories = snapshot.docs.map(doc => {
           const data = doc.data();
           return {
             id: doc.id,
@@ -1200,13 +1243,39 @@ export const categoriesService = {
           };
         });
 
-        callback(categories.sort((a, b) => a.name.localeCompare(b.name)));
+        callback(mergeCategories(masterCategories, userCategories, userId));
       });
+
+      // Si ce n'est pas master, écouter aussi les catégories utilisateur
+      if (userId !== 'master') {
+        const userQuery = query(categoriesRef, where('userId', '==', userId));
+        unsubscribeUser = onSnapshot(userQuery, (snapshot) => {
+          userCategories = snapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+              id: doc.id,
+              name: data.name || '',
+              description: data.description || '',
+              active: data.active ?? true,
+              masterCategoryId: data.masterCategoryId,
+              created_at: (data.created_at as Timestamp)?.toDate()?.toISOString() || new Date().toISOString()
+            };
+          });
+
+          callback(mergeCategories(masterCategories, userCategories, userId));
+        });
+      }
+    };
+
+    setupListeners().catch(error => {
+      console.error('Erreur lors de la configuration des listeners:', error);
+      callback([]);
     });
 
     // Retourner une fonction de nettoyage
     return () => {
-      if (unsubscribe) unsubscribe();
+      if (unsubscribeMaster) unsubscribeMaster();
+      if (unsubscribeUser) unsubscribeUser();
     };
   }
 };
