@@ -95,9 +95,7 @@ export function PizzeriaMenu() {
       setLoading(false);
     });
 
-    return () => {
-      if (unsubscribe) unsubscribe();
-    };
+    return unsubscribe;
   }, []);
 
   // Charger les extras au démarrage

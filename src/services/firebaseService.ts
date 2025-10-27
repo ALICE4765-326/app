@@ -617,7 +617,7 @@ export const pizzasService = {
     };
   },
 
-  async subscribeToAllPizzas(callback: (pizzas: Pizza[]) => void) {
+  subscribeToAllPizzas(callback: (pizzas: Pizza[]) => void) {
     if (!isFirebaseAvailable()) {
       callback([]);
       return () => {};
@@ -629,28 +629,46 @@ export const pizzasService = {
       return () => {};
     }
 
-    // Déterminer le userId à rechercher (master ou UID)
-    const userRef = doc(db, COLLECTIONS.USERS, currentUser.uid);
-    const userSnap = await getDoc(userRef);
-    const userData = userSnap.data();
-    const userIdToQuery = (userData?.email === 'master@pizzeria.com') ? 'master' : currentUser.uid;
+    // Déterminer le userId à rechercher de manière synchrone
+    const setupSubscription = async () => {
+      const userRef = doc(db, COLLECTIONS.USERS, currentUser.uid);
+      const userSnap = await getDoc(userRef);
+      const userData = userSnap.data();
+      const userIdToQuery = (userData?.email === 'master@pizzeria.com') ? 'master' : currentUser.uid;
 
-    const pizzasRef = collection(db, COLLECTIONS.PIZZAS);
-    const q = query(pizzasRef, where('userId', '==', userIdToQuery));
+      const pizzasRef = collection(db, COLLECTIONS.PIZZAS);
+      const q = query(pizzasRef, where('userId', '==', userIdToQuery));
 
-    return onSnapshot(q,
-      (snapshot) => {
-        const pizzas = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        } as Pizza));
-        callback(pizzas);
-      },
-      (error) => {
-        console.error('Erreur lors de l\'écoute des pizzas:', error);
-        callback([]);
+      return onSnapshot(q,
+        (snapshot) => {
+          const pizzas = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          } as Pizza));
+          callback(pizzas);
+        },
+        (error) => {
+          console.error('Erreur lors de l\'écoute des pizzas:', error);
+          callback([]);
+        }
+      );
+    };
+
+    let unsubscribe: (() => void) | null = null;
+
+    setupSubscription().then(unsub => {
+      unsubscribe = unsub;
+    }).catch(error => {
+      console.error('Erreur lors de la configuration de la souscription:', error);
+      callback([]);
+    });
+
+    // Retourner une fonction de nettoyage qui appelle unsubscribe si disponible
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
       }
-    );
+    };
   }
 };
 
